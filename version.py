@@ -1,0 +1,5 @@
+"""Single source of truth for the application version."""
+
+__version__ = "1.0.0"
+APP_NAME = "Game Manager"
+GITHUB_REPO = "Souto751/game-manager"
