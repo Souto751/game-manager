@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Game Manager — WiX Toolset v3 installer source
+  Docs: https://wixtoolset.org/docs/v3/
+
+  Este archivo define la estructura del MSI.
+  Los archivos del ejecutable los cosecha heat.exe en build.bat,
+  generando harvested.wxs automaticamente.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Product
+    Id="*"
+    Name="Game Manager"
+    Language="3082"
+    Version="1.0.0"
+    Manufacturer="Souto751"
+    UpgradeCode="A3F7B2C1-4E8D-4F2A-9C6B-1D5E3A7F9B2C">
+
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine"
+      Platform="x64"
+      Description="Game Manager — gestor de juegos instalados"
+      Manufacturer="Souto751"
+      Comments="https://github.com/Souto751/game-manager" />
+
+    <!-- Permite actualizar sin desinstalar la version anterior -->
+    <MajorUpgrade
+      DowngradeErrorMessage="Ya hay una version mas nueva de Game Manager instalada." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── Directorios ──────────────────────────────────────────────────── -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+
+      <!-- Carpeta de instalacion principal -->
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Game Manager" />
+      </Directory>
+
+      <!-- Acceso directo en Menu Inicio -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Game Manager" />
+      </Directory>
+
+      <!-- Acceso directo en Escritorio (opcional) -->
+      <Directory Id="DesktopFolder" Name="Desktop" />
+
+    </Directory>
+
+    <!-- ── Componente: acceso directo en Menu Inicio ───────────────────── -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="AppShortcutStartMenu" Guid="B1C2D3E4-F5A6-7B8C-9D0E-1F2A3B4C5D6E">
+        <Shortcut
+          Id="StartMenuShortcut"
+          Name="Game Manager"
+          Description="Gestor de juegos instalados"
+          Target="[INSTALLDIR]GameManager.exe"
+          WorkingDirectory="INSTALLDIR" />
+        <RemoveFolder Id="CleanUpStartMenuFolder" On="uninstall" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Souto751\GameManager"
+          Name="StartMenuInstalled"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ── Componente: acceso directo en Escritorio ────────────────────── -->
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="AppShortcutDesktop" Guid="C2D3E4F5-A6B7-8C9D-0E1F-2A3B4C5D6E7F">
+        <Shortcut
+          Id="DesktopShortcut"
+          Name="Game Manager"
+          Description="Gestor de juegos instalados"
+          Target="[INSTALLDIR]GameManager.exe"
+          WorkingDirectory="INSTALLDIR" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Souto751\GameManager"
+          Name="DesktopInstalled"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ── Registro para Agregar o Quitar Programas ────────────────────── -->
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="RegistryEntries" Guid="D3E4F5A6-B7C8-9D0E-1F2A-3B4C5D6E7F8A">
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\Souto751\GameManager"
+          Name="InstallDir"
+          Type="string"
+          Value="[INSTALLDIR]"
+          KeyPath="yes" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\Souto751\GameManager"
+          Name="Version"
+          Type="string"
+          Value="1.0.0" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ── Features ────────────────────────────────────────────────────── -->
+    <Feature Id="ProductFeature" Title="Game Manager" Level="1">
+      <!-- Archivos principales (cosechados por heat.exe) -->
+      <ComponentGroupRef Id="GameManagerFiles" />
+      <!-- Accesos directos -->
+      <ComponentRef Id="AppShortcutStartMenu" />
+      <ComponentRef Id="AppShortcutDesktop" />
+      <ComponentRef Id="RegistryEntries" />
+    </Feature>
+
+    <!-- ── UI: dialogo de instalacion ──────────────────────────────────── -->
+    <!-- WixUI_InstallDir muestra: bienvenida, carpeta destino, instalacion, fin -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+    <!-- Icono en Agregar o Quitar Programas -->
+    <Icon Id="AppIcon.ico" SourceFile="assets\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Souto751/game-manager/issues" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Souto751/game-manager" />
+
+    <!-- Opcional: abre el programa al terminar la instalacion -->
+    <Property Id="WixShellExecTarget" Value="[INSTALLDIR]GameManager.exe" />
+    <CustomAction
+      Id="LaunchApp"
+      BinaryKey="WixCA"
+      DllEntry="WixShellExec"
+      Impersonate="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="LaunchApp" After="InstallFinalize">
+        NOT Installed AND NOT REMOVE
+      </Custom>
+    </InstallExecuteSequence>
+
+  </Product>
+</Wix>

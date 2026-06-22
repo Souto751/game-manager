@@ -1,0 +1,41 @@
+# ── Build outputs ─────────────────────────────────────────────────────────────
+build/
+dist/
+installer_build/
+installer_output/
+*.spec.bak
+harvested.wxs
+*.wixobj
+*.wixpdb
+
+# ── Datos de usuario (no subir configuracion ni juegos guardados) ─────────────
+data/covers/
+data/games.json
+data/config.json
+data/accounts.json
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+
+# ── Entornos virtuales ────────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Sistema ───────────────────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
