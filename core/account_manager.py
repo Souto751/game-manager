@@ -1,18 +1,13 @@
 """Account manager — persists linked platform credentials."""
 
 import json
-import sys
 from pathlib import Path
+
+from core.paths import data_file
 
 
 def _accounts_path() -> Path:
-    if getattr(sys, "frozen", False):
-        base = Path(sys.executable).parent
-    else:
-        base = Path(__file__).parent.parent
-    p = base / "data" / "accounts.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
+    return data_file("accounts.json")
 
 
 class AccountManager:

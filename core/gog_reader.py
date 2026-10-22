@@ -12,9 +12,6 @@ try:
 except ImportError:
     WINREG_AVAILABLE = False
 
-GOG_CDN = "https://images.gog-statics.com"
-
-
 def detect_gog_games() -> list[Game]:
     if not WINREG_AVAILABLE:
         return []
@@ -62,13 +59,12 @@ def _read_gog_registry(reg_path: str) -> list[Game]:
                     if not full_exe and install_path and Path(install_path).exists():
                         full_exe = _find_main_exe(Path(install_path)) or ""
 
-                    cover = _gog_cover_url(gog_id)
-
                     games.append(Game(
                         id=str(uuid.uuid4()),
                         name=name,
                         executable=full_exe,
-                        cover_image=cover,
+                        cover_image=None,  # looked up via the GOG API by the game card
+                        cover_fetch_hint=("gog", gog_id, name),
                         platform="gog",
                         install_path=install_path,
                         tags=["gog"],
@@ -92,20 +88,19 @@ def _qv(key, name: str) -> str:
         return ""
 
 
-def _gog_cover_url(gog_id: str) -> Optional[str]:
-    """GOG cover images via their CDN - portrait format."""
-    if not gog_id:
-        return None
-    return f"https://images.gog-statics.com/5643a7c831df452d29005caeca24c28cdbfbc058f8cc4b35ea9a3a9bf5cf66ac/product/{gog_id}/product-card-game-cover_160.jpg"
-
-
 def _find_main_exe(directory: Path) -> Optional[str]:
     excluded = {"unins", "setup", "crash", "report", "redist", "galaxyclient"}
-    candidates = [
-        exe for exe in directory.glob("*.exe")
-        if not any(exc in exe.stem.lower() for exc in excluded)
-        and exe.stat().st_size > 200_000
-    ]
+    candidates = []
+    try:
+        for exe in directory.glob("*.exe"):
+            try:
+                if (not any(exc in exe.stem.lower() for exc in excluded)
+                        and exe.stat().st_size > 200_000):
+                    candidates.append(exe)
+            except OSError:
+                continue
+    except OSError:
+        return None
     if not candidates:
         return None
     candidates.sort(key=lambda x: x.stat().st_size, reverse=True)

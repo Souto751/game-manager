@@ -1,23 +1,19 @@
 """App configuration — persists user preferences (theme, language, etc.)."""
 
 import json
-import sys
 from pathlib import Path
+
+from core.paths import data_file
 
 _DEFAULTS = {
     "language": "es",
     "theme": "dark",
+    "start_with_windows": False,
 }
 
 
 def _config_file() -> Path:
-    if getattr(sys, "frozen", False):
-        base = Path(sys.executable).parent
-    else:
-        base = Path(__file__).parent.parent
-    p = base / "data" / "config.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
+    return data_file("config.json")
 
 
 class ConfigManager:

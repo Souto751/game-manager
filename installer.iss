@@ -8,7 +8,8 @@
 ; ============================================================
 
 #define AppName      "Game Manager"
-#define AppVersion   "1.0.0"
+; Mantener AppVersion igual que version.py
+#define AppVersion   "1.1.0"
 #define AppPublisher "Souto751"
 #define AppURL       "https://github.com/Souto751/game-manager"
 #define AppExeName   "GameManager.exe"
@@ -35,8 +36,9 @@ WizardStyle=modern
 WizardSizePercent=120
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#AppExeName}
-; Require admin for Program Files
-PrivilegesRequired=admin
+; Instalacion por usuario (sin admin): {autopf} apunta a %LOCALAPPDATA%\Programs.
+; Los datos del usuario viven en %APPDATA%\GameManager y no se tocan al actualizar.
+PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ; Windows 10+ only
 MinVersion=10.0

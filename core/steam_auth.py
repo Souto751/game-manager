@@ -7,6 +7,7 @@ No API key required — works with any public Steam profile.
 
 import re
 import urllib.parse
+import urllib.request
 import webbrowser
 from typing import Optional
 
@@ -39,11 +40,34 @@ def authenticate() -> Optional[str]:
     if not raw:
         return None
     qs = urllib.parse.parse_qs(urllib.parse.urlparse(raw).query)
-    claimed = qs.get("openid.claimed_id", [None])[0]
-    if not claimed:
+    params = {k: v[0] for k, v in qs.items()}
+    claimed = params.get("openid.claimed_id")
+    if not claimed or not params.get("openid.return_to", "").startswith(_RETURN_TO):
         return None
-    m = re.search(r"/id/(\d+)$", claimed)
-    return m.group(1) if m else None
+    m = re.fullmatch(r"https://steamcommunity\.com/openid/id/(\d{17})", claimed)
+    if not m:
+        return None
+    # Ask Steam to confirm the response really came from it (anyone could
+    # otherwise open the local callback URL with a made-up Steam ID).
+    if not _verify_with_steam(params):
+        return None
+    return m.group(1)
+
+
+def _verify_with_steam(params: dict) -> bool:
+    check = dict(params)
+    check["openid.mode"] = "check_authentication"
+    body = urllib.parse.urlencode(check).encode()
+    req = urllib.request.Request(
+        "https://steamcommunity.com/openid/login", data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "User-Agent": "GameManager/1.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            text = resp.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return False
+    return "is_valid:true" in text
 
 
 def fetch_games_for_id(steam_id: str) -> list:

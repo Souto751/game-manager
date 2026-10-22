@@ -3,21 +3,13 @@
 import json
 import os
 import subprocess
-import sys
+import threading
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
-
-def _get_data_file() -> Path:
-    if getattr(sys, "frozen", False):
-        base = Path(sys.executable).parent
-    else:
-        base = Path(__file__).parent.parent
-    return base / "data" / "games.json"
-
-
-DATA_FILE = _get_data_file()
+from core.non_games import is_non_game
+from core.paths import data_file
 
 
 class Game:
@@ -33,7 +25,7 @@ class Game:
         last_played: Optional[str] = None,
         tags: list[str] = None,
         steam_app_id: str = "",
-        cover_fetch_hint: tuple = None,   # ("epic", name) or ("ea", name, path)
+        cover_fetch_hint: tuple = None,   # ("epic", name), ("ea", name, path) or ("gog", product_id)
     ):
         self.id = id
         self.name = name
@@ -45,7 +37,9 @@ class Game:
         self.last_played = last_played
         self.tags = tags or []
         self.steam_app_id = steam_app_id
-        self.cover_fetch_hint = cover_fetch_hint  # transient, not persisted
+        # How to look up a cover online when cover_image is empty. Persisted so
+        # the lookup can be retried on the next launch if it failed.
+        self.cover_fetch_hint = tuple(cover_fetch_hint) if cover_fetch_hint else None
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +53,7 @@ class Game:
             "last_played": self.last_played,
             "tags": self.tags,
             "steam_app_id": self.steam_app_id,
+            "cover_hint": list(self.cover_fetch_hint) if self.cover_fetch_hint else None,
         }
 
     @classmethod
@@ -74,6 +69,7 @@ class Game:
             last_played=data.get("last_played"),
             tags=data.get("tags", []),
             steam_app_id=data.get("steam_app_id", ""),
+            cover_fetch_hint=data.get("cover_hint"),
         )
 
     def launch(self):
@@ -89,42 +85,81 @@ class Game:
 
 
 class GameManager:
+    """Owns the game list. Safe to call from background threads (import/sync)."""
+
     def __init__(self):
         self.games: list[Game] = []
+        self._lock = threading.RLock()
+        self._path = data_file("games.json")
         self.load()
 
     def load(self):
-        DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-        if DATA_FILE.exists():
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.games = [Game.from_dict(g) for g in data.get("games", [])]
-        else:
-            self.games = []
+        with self._lock:
+            if self._path.exists():
+                try:
+                    data = json.loads(self._path.read_text(encoding="utf-8"))
+                    games = [Game.from_dict(g) for g in data.get("games", [])]
+                    # Drop tools/runtimes imported by older versions (e.g. EA Desktop).
+                    self.games = [g for g in games if not is_non_game(g.name, g.steam_app_id)]
+                    if len(self.games) != len(games):
+                        self.save()
+                except (OSError, ValueError):
+                    # Corrupt file: keep a copy for recovery and start empty.
+                    try:
+                        self._path.replace(self._path.with_suffix(".json.bak"))
+                    except OSError:
+                        pass
+                    self.games = []
+            else:
+                self.games = []
 
     def save(self):
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump({"games": [g.to_dict() for g in self.games]}, f,
-                      indent=2, ensure_ascii=False)
+        with self._lock:
+            payload = json.dumps({"games": [g.to_dict() for g in self.games]},
+                                 indent=2, ensure_ascii=False)
+            # Write to a temp file first so a crash never leaves a half-written library.
+            tmp = self._path.with_suffix(".json.tmp")
+            tmp.write_text(payload, encoding="utf-8")
+            os.replace(tmp, self._path)
 
-    def add_game(self, game: Game):
-        # Deduplicate: prefer steam_app_id match for Steam, then exe path, then name+platform
+    def _is_duplicate(self, game: Game) -> bool:
+        # Prefer steam_app_id for Steam, then exe path, then name+platform.
         if game.platform == "steam" and game.steam_app_id:
-            if any(g.steam_app_id == game.steam_app_id for g in self.games):
-                return
-        elif game.executable:
-            if any(g.executable == game.executable for g in self.games):
-                return
-        else:
-            if any(g.name == game.name and g.platform == game.platform
-                   for g in self.games):
-                return
-        self.games.append(game)
-        self.save()
+            return any(g.steam_app_id == game.steam_app_id for g in self.games)
+        if game.executable:
+            return any(g.executable == game.executable for g in self.games)
+        return any(g.name == game.name and g.platform == game.platform for g in self.games)
+
+    def add_game(self, game: Game) -> bool:
+        """Add one game. Returns True if it was new."""
+        return self.add_games([game]) == 1
+
+    def add_games(self, games: Iterable[Game]) -> int:
+        """Add many games with a single save. Returns how many were new."""
+        added = 0
+        with self._lock:
+            for game in games:
+                if is_non_game(game.name, game.steam_app_id):
+                    continue
+                if not self._is_duplicate(game):
+                    self.games.append(game)
+                    added += 1
+            if added:
+                self.save()
+        return added
+
+    def set_cover(self, game_id: str, cover: str):
+        """Persist a cover found after import (Epic/EA/GOG lookups)."""
+        with self._lock:
+            game = self.get_game(game_id)
+            if game and game.cover_image != cover:
+                game.cover_image = cover
+                self.save()
 
     def remove_game(self, game_id: str):
-        self.games = [g for g in self.games if g.id != game_id]
-        self.save()
+        with self._lock:
+            self.games = [g for g in self.games if g.id != game_id]
+            self.save()
 
     def get_game(self, game_id: str) -> Optional[Game]:
         return next((g for g in self.games if g.id == game_id), None)

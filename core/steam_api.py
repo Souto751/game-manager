@@ -4,7 +4,6 @@ import urllib.request
 import urllib.parse
 import json
 import uuid
-from typing import Optional
 
 from core.game_manager import Game
 

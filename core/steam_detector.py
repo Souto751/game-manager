@@ -1,6 +1,5 @@
 """Steam game detector - finds installed Steam games on Windows."""
 
-import os
 import re
 import uuid
 from pathlib import Path

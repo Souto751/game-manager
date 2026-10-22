@@ -1,4 +1,4 @@
-"""
+r"""
 make_installer.py — Crea GameManager_Setup.exe sin herramientas externas.
 
 Pasos:
@@ -12,15 +12,16 @@ Uso:
   (o se llama automáticamente desde build.bat)
 """
 
-import os
 import sys
+import time
 import shutil
 import zipfile
 import subprocess
 from pathlib import Path
 
-APP_VERSION = "1.0.0"
 PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
+from version import __version__ as APP_VERSION  # single source of truth
 DIST_DIR     = PROJECT_ROOT / "dist" / "GameManager"
 INSTALLER_SCRIPT = PROJECT_ROOT / "installer_src" / "setup_gui.py"
 ICON_PATH    = PROJECT_ROOT / "assets" / "icon.ico"
@@ -29,11 +30,38 @@ OUTPUT_DIR   = PROJECT_ROOT / "installer_output"
 ZIP_NAME     = "app_files.zip"
 
 
+def _ensure_removable(path: Path, attempts: int = 5, delay: float = 1.0) -> None:
+    """Try to delete a previous build output before PyInstaller does.
+
+    PyInstaller's own overwrite (os.remove) fails hard with a raw
+    PermissionError/WinError 5 if the old .exe is locked (still running,
+    open in Explorer, or held by an antivirus scan). Retrying here gives
+    transient locks a chance to clear, and produces a clear error message
+    instead of a stack trace if it's still stuck.
+    """
+    if not path.exists():
+        return
+    last_err = None
+    for _ in range(attempts):
+        try:
+            path.unlink()
+            return
+        except PermissionError as e:
+            last_err = e
+            time.sleep(delay)
+    print(f"[ERROR] No se pudo reemplazar {path.name} — el archivo esta bloqueado.")
+    print("        Verifica que no este abierto/ejecutandose (Administrador de tareas)")
+    print("        ni siendo escaneado por el antivirus, y volve a intentar.")
+    raise SystemExit(1) from last_err
+
+
 def main():
     if not DIST_DIR.exists():
         print("[ERROR] dist\\GameManager\\ no existe.")
         print("        Ejecuta build.bat primero para compilar el ejecutable.")
         sys.exit(1)
+
+    _ensure_removable(OUTPUT_DIR / f"GameManager_Setup_{APP_VERSION}.exe")
 
     # ── Limpiar ──────────────────────────────────────────────────────────────
     if TEMP_DIR.exists():
@@ -66,6 +94,14 @@ def main():
         shutil.copy(ICON_PATH, TEMP_DIR / "icon.ico")
         icon_arg = [f"--add-data={TEMP_DIR / 'icon.ico'};.", f"--icon={ICON_PATH}"]
 
+    # ── Paso 2b: Copia del instalador con la version actual ───────────────────
+    src = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+    marker = 'APP_VERSION = "'
+    start = src.index(marker) + len(marker)
+    end = src.index('"', start)
+    installer_script = TEMP_DIR / "setup_gui.py"
+    installer_script.write_text(src[:start] + APP_VERSION + src[end:], encoding="utf-8")
+
     # ── Paso 3: Compilar instalador con PyInstaller ───────────────────────────
     setup_name = f"GameManager_Setup_{APP_VERSION}"
     print(f"[2/3] Compilando instalador {setup_name}.exe ...")
@@ -82,7 +118,7 @@ def main():
         f"--specpath={TEMP_DIR}",
         f"--add-data={zip_path};.",
     ] + icon_arg + [
-        str(INSTALLER_SCRIPT)
+        str(installer_script)
     ]
 
     result = subprocess.run(cmd, cwd=PROJECT_ROOT)

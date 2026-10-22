@@ -17,7 +17,7 @@ echo.
 
 :: ── Dependencias ─────────────────────────────────────────────────────────────
 echo [1/4] Instalando dependencias...
-pip install customtkinter Pillow pyinstaller --quiet
+pip install customtkinter Pillow pystray pyinstaller --quiet
 if errorlevel 1 ( echo [ERROR] pip fallo. & pause & exit /b 1 )
 
 :: ── Limpiar ───────────────────────────────────────────────────────────────────

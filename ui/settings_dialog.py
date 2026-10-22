@@ -1,24 +1,21 @@
-"""Settings dialog — language and theme preferences."""
+"""Settings dialog — theme, language and startup preferences."""
 
+import tkinter as tk
 import customtkinter as ctk
 from core.config_manager import ConfigManager
+from core import autostart
 from ui import theme
-
-_THEMES = {"Oscuro": "dark", "Claro": "light", "Sistema": "system"}
-_THEMES_INV = {v: k for k, v in _THEMES.items()}
-_LANGS = {"Espanol": "es", "English": "en"}
-_LANGS_INV = {v: k for k, v in _LANGS.items()}
+from ui.strings import reload_language, t
 
 
 class SettingsDialog(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("Configuracion")
-        self.geometry("560x380")
+        self.title(t("settings_title"))
+        self.geometry("560x480")
         self.resizable(False, False)
         self.configure(fg_color=theme.BACKGROUND)
         self.transient(parent)
-        self.grab_set()
         self._cfg = ConfigManager()
         self._parent = parent
         self._build()
@@ -33,7 +30,7 @@ class SettingsDialog(ctk.CTkToplevel):
         header.grid(row=0, column=0, sticky="ew")
         header.grid_propagate(False)
         header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, text="Configuracion", font=theme.FONT_HEADLINE,
+        ctk.CTkLabel(header, text=t("settings_title"), font=theme.FONT_HEADLINE,
                      text_color=theme.PRIMARY_LIGHT, anchor="w").grid(
                      row=0, column=0, padx=24, pady=14, sticky="w")
 
@@ -44,20 +41,59 @@ class SettingsDialog(ctk.CTkToplevel):
 
         row = 0
 
-        # ── Apariencia ────────────────────────────────────────────────────────
-        ctk.CTkLabel(scroll, text="APARIENCIA", font=theme.FONT_CAPTION,
+        # ── Startup ───────────────────────────────────────────────────────────
+        ctk.CTkLabel(scroll, text=t("startup_section"), font=theme.FONT_CAPTION,
                      text_color=theme.OUTLINE, anchor="w").grid(
                      row=row, column=0, padx=20, pady=(20, 6), sticky="w")
         row += 1
 
-        ctk.CTkLabel(scroll, text="Tema", font=theme.FONT_BODY,
+        self._autostart_var = tk.IntVar(value=1 if autostart.is_enabled() else 0)
+        self._autostart_switch = ctk.CTkSwitch(
+            scroll, text=t("start_with_windows_label"),
+            font=theme.FONT_BODY, text_color=theme.ON_SURFACE,
+            variable=self._autostart_var, onvalue=1, offvalue=0,
+            fg_color=theme.SURFACE_VARIANT,
+            progress_color=theme.PRIMARY,
+            button_hover_color=theme.PRIMARY_DARK,
+            command=self._on_autostart_toggle)
+        self._autostart_switch.grid(row=row, column=0, padx=20, pady=(0, 6), sticky="w")
+        row += 1
+
+        ctk.CTkLabel(scroll, text=t("start_with_windows_note"),
+                     font=theme.FONT_CAPTION, text_color=theme.OUTLINE, anchor="w",
+                     justify="left").grid(
+                     row=row, column=0, padx=20, pady=(0, 4), sticky="w")
+        row += 1
+
+        ctk.CTkLabel(scroll, text=t("minimize_to_tray_note"),
+                     font=theme.FONT_CAPTION, text_color=theme.OUTLINE, anchor="w",
+                     justify="left").grid(
+                     row=row, column=0, padx=20, pady=(0, 20), sticky="w")
+        row += 1
+
+        # ── Appearance ────────────────────────────────────────────────────────
+        ctk.CTkLabel(scroll, text=t("appearance"), font=theme.FONT_CAPTION,
+                     text_color=theme.OUTLINE, anchor="w").grid(
+                     row=row, column=0, padx=20, pady=(20, 6), sticky="w")
+        row += 1
+
+        ctk.CTkLabel(scroll, text=t("theme_label"), font=theme.FONT_BODY,
                      text_color=theme.ON_SURFACE, anchor="w").grid(
                      row=row, column=0, padx=20, pady=(0, 6), sticky="w")
         row += 1
 
-        current_theme = _THEMES_INV.get(self._cfg.get("theme"), "Oscuro")
+        # Build theme label ↔ mode mapping in current language
+        self._theme_labels = [t("theme_dark"), t("theme_light"), t("theme_system")]
+        self._theme_modes  = ["dark", "light", "system"]
+
+        current_mode  = self._cfg.get("theme") or "dark"
+        try:
+            current_label = self._theme_labels[self._theme_modes.index(current_mode)]
+        except ValueError:
+            current_label = self._theme_labels[0]
+
         self._theme_seg = ctk.CTkSegmentedButton(
-            scroll, values=list(_THEMES.keys()),
+            scroll, values=self._theme_labels,
             font=theme.FONT_BODY, height=36,
             fg_color=theme.SURFACE_VARIANT,
             selected_color=theme.PRIMARY,
@@ -66,24 +102,32 @@ class SettingsDialog(ctk.CTkToplevel):
             unselected_hover_color=theme.SURFACE_CONTAINER_HIGH,
             text_color=theme.ON_SURFACE,
             command=self._on_theme_change)
-        self._theme_seg.set(current_theme)
+        self._theme_seg.set(current_label)
         self._theme_seg.grid(row=row, column=0, padx=16, pady=(0, 16), sticky="ew")
         row += 1
 
-        # ── Idioma ────────────────────────────────────────────────────────────
-        ctk.CTkLabel(scroll, text="IDIOMA", font=theme.FONT_CAPTION,
+        # ── Language ──────────────────────────────────────────────────────────
+        ctk.CTkLabel(scroll, text=t("language_section"), font=theme.FONT_CAPTION,
                      text_color=theme.OUTLINE, anchor="w").grid(
                      row=row, column=0, padx=20, pady=(8, 6), sticky="w")
         row += 1
 
-        ctk.CTkLabel(scroll, text="Idioma de la interfaz", font=theme.FONT_BODY,
+        ctk.CTkLabel(scroll, text=t("language_label"), font=theme.FONT_BODY,
                      text_color=theme.ON_SURFACE, anchor="w").grid(
                      row=row, column=0, padx=20, pady=(0, 6), sticky="w")
         row += 1
 
-        current_lang = _LANGS_INV.get(self._cfg.get("language"), "Espanol")
+        self._lang_labels = [t("lang_spanish"), t("lang_english")]
+        self._lang_codes  = ["es", "en"]
+
+        current_lang = self._cfg.get("language") or "es"
+        try:
+            current_lang_label = self._lang_labels[self._lang_codes.index(current_lang)]
+        except ValueError:
+            current_lang_label = self._lang_labels[0]
+
         self._lang_seg = ctk.CTkSegmentedButton(
-            scroll, values=list(_LANGS.keys()),
+            scroll, values=self._lang_labels,
             font=theme.FONT_BODY, height=36,
             fg_color=theme.SURFACE_VARIANT,
             selected_color=theme.PRIMARY,
@@ -92,20 +136,42 @@ class SettingsDialog(ctk.CTkToplevel):
             unselected_hover_color=theme.SURFACE_CONTAINER_HIGH,
             text_color=theme.ON_SURFACE,
             command=self._on_lang_change)
-        self._lang_seg.set(current_lang)
+        self._lang_seg.set(current_lang_label)
         self._lang_seg.grid(row=row, column=0, padx=16, pady=(0, 6), sticky="ew")
         row += 1
 
-        ctk.CTkLabel(scroll, text="El cambio de idioma se aplica al reiniciar.",
+        ctk.CTkLabel(scroll, text=t("language_note"),
                      font=theme.FONT_CAPTION, text_color=theme.OUTLINE, anchor="w").grid(
                      row=row, column=0, padx=20, pady=(0, 20), sticky="w")
 
+    def _on_autostart_toggle(self):
+        enable = self._autostart_var.get() == 1
+        ok = autostart.enable() if enable else autostart.disable()
+        if not ok:
+            # Revert the switch if the registry write failed.
+            self._autostart_var.set(0 if enable else 1)
+            if enable:
+                self._autostart_switch.deselect()
+            else:
+                self._autostart_switch.select()
+            return
+        self._cfg.set("start_with_windows", enable)
+
     def _on_theme_change(self, label: str):
-        mode = _THEMES.get(label, "dark")
+        try:
+            mode = self._theme_modes[self._theme_labels.index(label)]
+        except (ValueError, IndexError):
+            mode = "dark"
         self._cfg.set("theme", mode)
-        # Defer to the parent window's event loop — calling set_appearance_mode
-        # from inside a modal with grab_set() can stall the UI.
-        self._parent.after(10, lambda: ctk.set_appearance_mode(mode))
+        ctk.set_appearance_mode(mode)
 
     def _on_lang_change(self, label: str):
-        self._cfg.set("language", _LANGS.get(label, "es"))
+        try:
+            lang = self._lang_codes[self._lang_labels.index(label)]
+        except (ValueError, IndexError):
+            lang = "es"
+        self._cfg.set("language", lang)
+        reload_language()
+        # Rebuild the main window UI with the new language strings.
+        self.destroy()
+        self._parent.after(10, self._parent._rebuild_ui)

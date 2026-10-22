@@ -1,8 +1,11 @@
 """Cover image fetcher for Epic and EA games."""
 
+import difflib
 import json
-import urllib.request
+import re
+import unicodedata
 import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -125,59 +128,10 @@ def fetch_ea_cover(game_name: str, content_id: str = "",
     if url:
         return url
 
-    # 2. EA store API by content ID
-    if content_id:
-        api_url = (_ea_api_cover_by_id(content_id))
-        if api_url:
-            return api_url
-
-    # 3. Try EA store search API
-    store_url = _ea_store_search(game_name)
-    if store_url:
-        return store_url
-
-    # 4. Local files in install dir and EA cache dirs
+    # 2. Local files in install dir and EA cache dirs.
+    # (The old Origin APIs, api2.origin.com, were shut down: calling them only
+    # added timeouts. The Steam store fallback covers most EA games.)
     return find_ea_cover_local(install_path, game_name)
-
-
-def _ea_api_cover_by_id(content_id: str) -> Optional[str]:
-    """Try the EA/Origin API for a cover image using the content/software ID."""
-    try:
-        url = (f"https://api2.origin.com/ecommerce2/products/{content_id}"
-               f"/en_US/mobile/medium-tablet.jpg")
-        req = urllib.request.Request(
-            url, headers={"User-Agent": "GameManager/1.0"})
-        with urllib.request.urlopen(req, timeout=6) as r:
-            if r.status == 200 and "image" in r.headers.get("Content-Type", ""):
-                return url
-    except Exception:
-        pass
-    return None
-
-
-def _ea_store_search(game_name: str) -> Optional[str]:
-    """Search EA store API for a game cover (no auth needed for public titles)."""
-    try:
-        q = urllib.parse.quote(game_name)
-        url = (f"https://api2.origin.com/games/search?searchTerm={q}"
-               f"&locale=en_US&start=0&rows=1&sku=PCWIN")
-        req = urllib.request.Request(
-            url, headers={"User-Agent": "GameManager/1.0",
-                          "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            data = json.loads(r.read())
-        games = data.get("offer", []) or data.get("offers", [])
-        if not games:
-            return None
-        offer = games[0]
-        images = offer.get("imageServer", "") 
-        img_path = (offer.get("packArtSmall") or offer.get("boxArtSmall")
-                    or offer.get("packArtLarge") or "")
-        if images and img_path:
-            return images.rstrip("/") + "/" + img_path.lstrip("/")
-    except Exception:
-        pass
-    return None
 
 
 def find_ea_cover_local(install_path: str, game_name: str) -> Optional[str]:
@@ -217,3 +171,126 @@ def _scan_dir_for_image(directory: Path) -> Optional[str]:
         if item.is_file() and item.suffix.lower() in _EA_IMG_EXTS:
             return str(item)
     return None
+
+
+# ── GOG (public API, no auth) ─────────────────────────────────────────────────
+
+def fetch_gog_cover(product_id: str) -> Optional[str]:
+    """Vertical box art from the public GOG API; falls back to the wide logo."""
+    if not product_id or not str(product_id).isdigit():
+        return None
+    headers = {"User-Agent": "GameManager/1.1", "Accept": "application/json"}
+    try:
+        req = urllib.request.Request(
+            f"https://api.gog.com/v2/games/{product_id}?locale=en-US", headers=headers)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        href = data.get("_links", {}).get("boxArtImage", {}).get("href")
+        if href:
+            return href
+    except Exception:
+        pass
+    try:
+        req = urllib.request.Request(
+            f"https://api.gog.com/products/{product_id}", headers=headers)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        logo = data.get("images", {}).get("logo2x") or data.get("images", {}).get("logo")
+        if logo:
+            return "https:" + logo if logo.startswith("//") else logo
+    except Exception:
+        pass
+    return None
+
+
+# ── Steam store search (public, no key) — fallback for every store ─────────────
+# Most EA and many Epic/GOG/Xbox games are also on Steam, whose CDN has
+# good vertical box art. Matching is by name, so it's strict to avoid
+# showing the wrong game.
+
+_STEAM_SEARCH = "https://store.steampowered.com/api/storesearch/?term={q}&l=english&cc=US"
+_STEAM_ART = [
+    "https://cdn.akamai.steamstatic.com/steam/apps/{id}/library_600x900_2x.jpg",
+    "https://cdn.akamai.steamstatic.com/steam/apps/{id}/library_600x900.jpg",
+    "https://cdn.akamai.steamstatic.com/steam/apps/{id}/header.jpg",
+]
+
+
+def _normalize(name: str) -> str:
+    # Before NFKD (which turns ™ into "TM"); EA also writes them as "(TM)"/"(R)".
+    name = re.sub(r"[™®©]|\((tm|r|c)\)", "", name, flags=re.IGNORECASE)
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    name = re.sub(r"\b(standard|deluxe|gold|ultimate|complete|definitive|edition|"
+                  r"game of the year|goty|remastered)\b", " ", name)
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", name).split())
+
+
+def _url_exists(url: str) -> bool:
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "GameManager/1.1"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def fetch_steam_cover_by_name(game_name: str) -> Optional[str]:
+    target = _normalize(game_name)
+    if not target:
+        return None
+    try:
+        url = _STEAM_SEARCH.format(q=urllib.parse.quote(game_name))
+        req = urllib.request.Request(url, headers={"User-Agent": "GameManager/1.1"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            items = json.loads(r.read()).get("items", [])
+    except Exception:
+        return None
+
+    numbers = re.findall(r"\d+", target)
+    best_id, best_score = None, 0.0
+    for item in items:
+        candidate = _normalize(item.get("name", ""))
+        if candidate == target:
+            best_id, best_score = item.get("id"), 1.0
+            break
+        # Sequels differ only by a number ("FIFA 22" vs "FIFA 23"): never mix them.
+        if re.findall(r"\d+", candidate) != numbers:
+            continue
+        score = difflib.SequenceMatcher(None, target, candidate).ratio()
+        if score > best_score:
+            best_id, best_score = item.get("id"), score
+    if not best_id or best_score < 0.9:
+        return None
+    for template in _STEAM_ART:
+        art = template.format(id=best_id)
+        if _url_exists(art):
+            return art
+    return None
+
+
+def fetch_cover_for_hint(hint) -> Optional[str]:
+    """Resolve a Game.cover_fetch_hint to a cover URL or local path."""
+    if not hint:
+        return None
+    kind = hint[0]
+    name = str(hint[1]) if len(hint) > 1 else ""
+    found = None
+    try:
+        if kind == "epic":
+            # Epic's public GraphQL is now behind bot protection and only times
+            # out, so Epic games go straight to the Steam fallback below.
+            found = None
+        elif kind == "ea":
+            install = hint[2] if len(hint) > 2 else ""
+            content_id = hint[3] if len(hint) > 3 else ""
+            found = fetch_ea_cover(name, content_id, install)
+        elif kind == "gog":
+            found = fetch_gog_cover(name)
+            name = str(hint[2]) if len(hint) > 2 else ""  # GOG hints: ("gog", id, name)
+    except Exception:
+        found = None
+    if found:
+        return found
+    # Store-specific lookups failed (Epic's API is now protected, EA moved
+    # its catalog): fall back to the matching game on the Steam store.
+    return fetch_steam_cover_by_name(name) if name else None

@@ -27,17 +27,18 @@ if lib_tkinter.exists():
     datas.append((str(lib_tkinter), "tkinter"))
 
 datas += collect_data_files("customtkinter", include_py_files=False)
-# Include data folder (covers cache, config, games list)
-datas += [("data", "data")]
+# User data is NOT bundled: it lives in %APPDATA%\GameManager (see core/paths.py).
 # Include assets (icon)
 if Path("assets").exists():
     datas += [("assets", "assets")]
 
 hiddenimports = (
     collect_submodules("customtkinter")
+    + collect_submodules("pystray")
     + ["tkinter", "tkinter.ttk", "tkinter.messagebox",
        "tkinter.filedialog", "_tkinter", "PIL._tkinter_finder",
-       "urllib.request", "urllib.error", "xml.etree.ElementTree"]
+       "urllib.request", "urllib.error", "xml.etree.ElementTree",
+       "winreg", "pystray._win32"]
 )
 
 a = Analysis(

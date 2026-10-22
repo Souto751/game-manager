@@ -4,7 +4,6 @@ Uses the public Steam profile XML endpoint. Requires the user's profile
 to be set to Public in Steam Privacy Settings.
 """
 
-import re
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET

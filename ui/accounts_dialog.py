@@ -4,15 +4,14 @@ import threading
 import customtkinter as ctk
 from core.account_manager import AccountManager
 from ui import theme
-
-_BTN = dict(font=theme.FONT_LABEL, height=34, corner_radius=20,
-            text_color=theme.ON_PRIMARY)
+from ui.dispatch import post
+from ui.strings import t
 
 
 class AccountsDialog(ctk.CTkToplevel):
     def __init__(self, parent, game_manager=None, on_sync_done=None):
         super().__init__(parent)
-        self.title("Vincular cuentas")
+        self.title(t("accounts_title"))
         self.geometry("640x680")
         self.resizable(False, False)
         self.configure(fg_color=theme.BACKGROUND)
@@ -34,7 +33,7 @@ class AccountsDialog(ctk.CTkToplevel):
         header.grid(row=0, column=0, sticky="ew")
         header.grid_propagate(False)
         header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, text="Vincular cuentas", font=theme.FONT_HEADLINE,
+        ctk.CTkLabel(header, text=t("accounts_title"), font=theme.FONT_HEADLINE,
                      text_color=theme.PRIMARY_LIGHT, anchor="w").grid(
                      row=0, column=0, padx=24, pady=14, sticky="w")
 
@@ -50,9 +49,7 @@ class AccountsDialog(ctk.CTkToplevel):
         card = self._card(scroll, r); r += 1
         card.grid_columnconfigure(0, weight=1)
 
-        desc = ("Inicia sesion con tu cuenta de Steam en el navegador.\n"
-                "Se importara tu biblioteca completa (perfil debe ser publico).")
-        ctk.CTkLabel(card, text=desc, font=theme.FONT_BODY,
+        ctk.CTkLabel(card, text=t("steam_desc"), font=theme.FONT_BODY,
                      text_color=theme.ON_SURFACE_VARIANT, anchor="w",
                      justify="left", wraplength=540).grid(
                      row=0, column=0, padx=16, pady=(14, 10), sticky="w")
@@ -64,20 +61,24 @@ class AccountsDialog(ctk.CTkToplevel):
         btn_frame.grid(row=2, column=0, padx=16, pady=(4, 14), sticky="w")
 
         self._steam_connect_btn = ctk.CTkButton(
-            btn_frame, text="Conectar con Steam",
+            btn_frame, text=t("connect_steam"),
+            font=theme.FONT_LABEL, height=34, corner_radius=20,
+            text_color=theme.ON_PRIMARY,
             fg_color="#1B2838", hover_color="#2a475e",
-            command=self._connect_steam, **_BTN)
+            command=self._connect_steam)
         self._steam_connect_btn.pack(side="left", padx=(0, 8))
 
         if self._am.steam_id:
-            ctk.CTkButton(btn_frame, text="Sincronizar biblioteca",
+            ctk.CTkButton(btn_frame, text=t("sync_library"),
+                          font=theme.FONT_LABEL, height=34, corner_radius=20,
+                          text_color=theme.ON_PRIMARY,
                           fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_DARK,
-                          command=self._sync_steam, **_BTN).pack(side="left", padx=(0, 8))
-            ctk.CTkButton(btn_frame, text="Desvincular",
+                          command=self._sync_steam).pack(side="left", padx=(0, 8))
+            ctk.CTkButton(btn_frame, text=t("unlink"),
+                          font=theme.FONT_LABEL, height=34, corner_radius=20,
                           fg_color=theme.SURFACE_CONTAINER_HIGH,
                           hover_color=theme.ERROR,
                           text_color=theme.ON_SURFACE_VARIANT,
-                          font=theme.FONT_LABEL, height=34, corner_radius=20,
                           command=self._unlink_steam).pack(side="left")
 
         # ── Epic Games ────────────────────────────────────────────────────────
@@ -85,9 +86,7 @@ class AccountsDialog(ctk.CTkToplevel):
         card = self._card(scroll, r); r += 1
         card.grid_columnconfigure(0, weight=1)
 
-        desc = ("Epic Games importa los juegos instalados desde el launcher local.\n"
-                "No se requiere inicio de sesion adicional.")
-        ctk.CTkLabel(card, text=desc, font=theme.FONT_BODY,
+        ctk.CTkLabel(card, text=t("epic_desc"), font=theme.FONT_BODY,
                      text_color=theme.ON_SURFACE_VARIANT, anchor="w",
                      justify="left", wraplength=540).grid(
                      row=0, column=0, padx=16, pady=(14, 10), sticky="w")
@@ -98,11 +97,11 @@ class AccountsDialog(ctk.CTkToplevel):
         btn_frame2 = ctk.CTkFrame(card, fg_color="transparent")
         btn_frame2.grid(row=2, column=0, padx=16, pady=(4, 14), sticky="w")
         self._epic_btn = ctk.CTkButton(
-            btn_frame2, text="Detectar juegos de Epic",
+            btn_frame2, text=t("detect_epic"),
+            font=theme.FONT_LABEL, height=34, corner_radius=20,
             fg_color=theme.SURFACE_CONTAINER_HIGH,
             hover_color=theme.OUTLINE_VARIANT,
-            text_color=theme.ON_SURFACE, font=theme.FONT_LABEL,
-            height=34, corner_radius=20,
+            text_color=theme.ON_SURFACE,
             command=self._connect_epic)
         self._epic_btn.pack(side="left")
 
@@ -111,9 +110,7 @@ class AccountsDialog(ctk.CTkToplevel):
         card = self._card(scroll, r); r += 1
         card.grid_columnconfigure(0, weight=1)
 
-        desc = ("EA App importa los juegos instalados leyendo los datos locales\n"
-                "del cliente EA en tu sistema.")
-        ctk.CTkLabel(card, text=desc, font=theme.FONT_BODY,
+        ctk.CTkLabel(card, text=t("ea_desc"), font=theme.FONT_BODY,
                      text_color=theme.ON_SURFACE_VARIANT, anchor="w",
                      justify="left", wraplength=540).grid(
                      row=0, column=0, padx=16, pady=(14, 10), sticky="w")
@@ -124,10 +121,10 @@ class AccountsDialog(ctk.CTkToplevel):
         btn_frame3 = ctk.CTkFrame(card, fg_color="transparent")
         btn_frame3.grid(row=2, column=0, padx=16, pady=(4, 14), sticky="w")
         self._ea_btn = ctk.CTkButton(
-            btn_frame3, text="Detectar juegos de EA",
+            btn_frame3, text=t("detect_ea"),
+            font=theme.FONT_LABEL, height=34, corner_radius=20,
             fg_color="#FF6B00", hover_color="#cc5500",
-            text_color="#FFFFFF", font=theme.FONT_LABEL,
-            height=34, corner_radius=20,
+            text_color="#FFFFFF",
             command=self._connect_ea)
         self._ea_btn.pack(side="left")
 
@@ -136,9 +133,7 @@ class AccountsDialog(ctk.CTkToplevel):
         card = self._card(scroll, r); r += 1
         card.grid_columnconfigure(0, weight=1)
 
-        desc = ("Detecta los juegos de Xbox Game Pass instalados en tu PC\n"
-                "desde la app de Xbox (carpeta XboxGames y registro de Windows).")
-        ctk.CTkLabel(card, text=desc, font=theme.FONT_BODY,
+        ctk.CTkLabel(card, text=t("xbox_desc"), font=theme.FONT_BODY,
                      text_color=theme.ON_SURFACE_VARIANT, anchor="w",
                      justify="left", wraplength=540).grid(
                      row=0, column=0, padx=16, pady=(14, 10), sticky="w")
@@ -149,14 +144,13 @@ class AccountsDialog(ctk.CTkToplevel):
         btn_frame4 = ctk.CTkFrame(card, fg_color="transparent")
         btn_frame4.grid(row=2, column=0, padx=16, pady=(4, 14), sticky="w")
         self._xbox_btn = ctk.CTkButton(
-            btn_frame4, text="Detectar juegos de Xbox",
+            btn_frame4, text=t("detect_xbox"),
+            font=theme.FONT_LABEL, height=34, corner_radius=20,
             fg_color="#107C10", hover_color="#0a5a0a",
-            text_color="#FFFFFF", font=theme.FONT_LABEL,
-            height=34, corner_radius=20,
+            text_color="#FFFFFF",
             command=self._connect_xbox)
         self._xbox_btn.pack(side="left")
 
-        # Bottom spacer
         ctk.CTkLabel(scroll, text="").grid(row=r, column=0, pady=8)
 
     # ── Status helpers ────────────────────────────────────────────────────────
@@ -190,10 +184,10 @@ class AccountsDialog(ctk.CTkToplevel):
         sid = self._am.steam_id
         if sid:
             self._steam_status.configure(
-                text=f"Conectado  •  Steam ID: {sid}", text_color=theme.SUCCESS)
+                text=t("steam_connected", sid=sid), text_color=theme.SUCCESS)
         else:
             self._steam_status.configure(
-                text="No conectado", text_color=theme.OUTLINE)
+                text=t("steam_not_connected"), text_color=theme.OUTLINE)
 
     def _update_epic_status(self):
         from pathlib import Path
@@ -201,11 +195,10 @@ class AccountsDialog(ctk.CTkToplevel):
         count = len(list(manifests.glob("*.item"))) if manifests.exists() else 0
         if count:
             self._epic_status.configure(
-                text=f"Epic Games detectado  •  {count} juego(s) en manifiestos",
-                text_color=theme.SUCCESS)
+                text=t("epic_found", count=count), text_color=theme.SUCCESS)
         else:
             self._epic_status.configure(
-                text="Epic Games Launcher no encontrado", text_color=theme.OUTLINE)
+                text=t("epic_not_found"), text_color=theme.OUTLINE)
 
     def _update_ea_status(self):
         from pathlib import Path
@@ -213,11 +206,10 @@ class AccountsDialog(ctk.CTkToplevel):
         count = len(list(ea_dir.rglob("*.json"))) if ea_dir.exists() else 0
         if count:
             self._ea_status.configure(
-                text=f"EA App detectada  •  {count} archivo(s) de instalacion",
-                text_color=theme.SUCCESS)
+                text=t("ea_found", count=count), text_color=theme.SUCCESS)
         else:
             self._ea_status.configure(
-                text="EA App no encontrada en la ruta por defecto", text_color=theme.OUTLINE)
+                text=t("ea_not_found"), text_color=theme.OUTLINE)
 
     def _update_xbox_status(self):
         from pathlib import Path
@@ -225,73 +217,75 @@ class AccountsDialog(ctk.CTkToplevel):
         count = sum(1 for e in xbox_dir.iterdir() if e.is_dir()) if xbox_dir.exists() else 0
         if count:
             self._xbox_status.configure(
-                text=f"Xbox Game Pass detectado  •  {count} juego(s) en XboxGames",
-                text_color=theme.SUCCESS)
+                text=t("xbox_found", count=count), text_color=theme.SUCCESS)
         else:
             self._xbox_status.configure(
-                text="Carpeta XboxGames no encontrada", text_color=theme.OUTLINE)
+                text=t("xbox_not_found"), text_color=theme.OUTLINE)
 
     # ── Connect handlers ──────────────────────────────────────────────────────
 
     def _connect_steam(self):
-        """Open Steam login in browser, wait for OpenID callback, then sync."""
         self._steam_connect_btn.configure(state="disabled",
-                                          text="Esperando autenticacion...")
+                                          text=t("auth_waiting_btn"))
         self._steam_status.configure(
-            text="Abriendo Steam en el navegador — inicia sesion y autoriza.",
-            text_color=theme.OUTLINE)
+            text=t("auth_waiting_lbl"), text_color=theme.OUTLINE)
         threading.Thread(target=self._do_steam_auth, daemon=True).start()
 
     def _do_steam_auth(self):
+        # Runs on a worker thread: never touch widgets here, use post().
         try:
             from core.steam_auth import authenticate
-            steam_id = authenticate()
-        except Exception as e:
-            self.after(0, lambda: self._on_steam_done(None, str(e)))
-            return
-        self.after(0, lambda: self._on_steam_done(steam_id, None))
+            steam_id, error = authenticate(), None
+        except Exception as exc:
+            steam_id, error = None, str(exc)  # bind now: `exc` is cleared after the except block
+        post(self._on_steam_done, steam_id, error)
 
     def _on_steam_done(self, steam_id, error):
-        self._steam_connect_btn.configure(state="normal", text="Conectar con Steam")
+        if not self.winfo_exists():
+            if steam_id and not error:
+                self._am.save_steam("", steam_id)  # keep the login even if the dialog was closed
+            return
+        self._steam_connect_btn.configure(state="normal", text=t("connect_steam"))
         if error or not steam_id:
             self._set_status(self._steam_status,
-                             error or "Autenticacion cancelada o tiempo agotado.", ok=False)
+                             error or t("auth_cancelled"), ok=False)
             return
         self._am.save_steam("", steam_id)
         self._update_steam_status()
         self._sync_steam()
 
     def _sync_steam(self):
-        """Fetch game library for the stored Steam ID."""
         sid = self._am.steam_id
         if not sid:
             return
-        self._set_status(self._steam_status, "Importando biblioteca de Steam...", ok=True)
+        self._set_status(self._steam_status, t("importing_steam"), ok=True)
         threading.Thread(target=self._do_steam_sync, args=(sid,), daemon=True).start()
 
     def _do_steam_sync(self, steam_id: str):
         games, error = [], None
         try:
-            # Installed games (local ACF manifests)
             from core.steam_detector import detect_steam_games
             games.extend(detect_steam_games())
-            # Full cloud library (public profile XML)
             from core.steam_local_library import fetch_library_by_steam_id
             games.extend(fetch_library_by_steam_id(steam_id))
         except PermissionError as e:
             error = str(e)
         except Exception as e:
-            error = f"Error al importar: {e}"
+            error = f"Error: {e}"
         added = self._bulk_add(games)
-        self.after(0, lambda: self._on_steam_sync_done(added, error))
+        post(self._on_steam_sync_done, added, error)
 
     def _on_steam_sync_done(self, added: int, error):
+        if not self.winfo_exists():  # dialog closed during the import: still refresh the library
+            if self._on_sync_done:
+                self._on_sync_done(added, "Steam")
+            return
         if error:
             self._set_status(self._steam_status, error, ok=False)
         else:
             self._update_steam_status()
             self._steam_status.configure(
-                text=self._steam_status.cget("text") + f"  •  {added} juego(s) nuevos importados")
+                text=self._steam_status.cget("text") + t("steam_synced", n=added))
         if self._on_sync_done:
             self._on_sync_done(added, "Steam")
 
@@ -302,73 +296,52 @@ class AccountsDialog(ctk.CTkToplevel):
     # ── Epic ──────────────────────────────────────────────────────────────────
 
     def _connect_epic(self):
-        self._epic_btn.configure(state="disabled", text="Detectando...")
+        self._epic_btn.configure(state="disabled", text=t("detecting"))
         threading.Thread(target=self._do_epic_sync, daemon=True).start()
 
     def _do_epic_sync(self):
-        try:
-            from core.epic_reader import detect_epic_games
-            games = detect_epic_games()
-        except Exception as e:
-            self.after(0, lambda: self._on_platform_done(
-                self._epic_btn, self._epic_status, 0,
-                f"Error: {e}", "Detectar juegos de Epic"))
-            return
-        added = self._bulk_add(games)
-        self.after(0, lambda: self._on_platform_done(
-            self._epic_btn, self._epic_status, added, None,
-            "Detectar juegos de Epic"))
+        from core.epic_reader import detect_epic_games
+        self._run_detection(detect_epic_games, self._epic_btn, self._epic_status, t("detect_epic"))
 
     # ── EA ────────────────────────────────────────────────────────────────────
 
     def _connect_ea(self):
-        self._ea_btn.configure(state="disabled", text="Detectando...")
+        self._ea_btn.configure(state="disabled", text=t("detecting"))
         threading.Thread(target=self._do_ea_sync, daemon=True).start()
 
     def _do_ea_sync(self):
-        try:
-            from core.ea_reader import detect_ea_games
-            games = detect_ea_games()
-        except Exception as e:
-            self.after(0, lambda: self._on_platform_done(
-                self._ea_btn, self._ea_status, 0,
-                f"Error: {e}", "Detectar juegos de EA"))
-            return
-        added = self._bulk_add(games)
-        self.after(0, lambda: self._on_platform_done(
-            self._ea_btn, self._ea_status, added, None,
-            "Detectar juegos de EA"))
+        from core.ea_reader import detect_ea_games
+        self._run_detection(detect_ea_games, self._ea_btn, self._ea_status, t("detect_ea"))
 
     # ── Xbox ──────────────────────────────────────────────────────────────────
 
     def _connect_xbox(self):
-        self._xbox_btn.configure(state="disabled", text="Detectando...")
+        self._xbox_btn.configure(state="disabled", text=t("detecting"))
         threading.Thread(target=self._do_xbox_sync, daemon=True).start()
 
     def _do_xbox_sync(self):
+        from core.xbox_reader import detect_xbox_games
+        self._run_detection(detect_xbox_games, self._xbox_btn, self._xbox_status, t("detect_xbox"))
+
+    def _run_detection(self, detect, btn, status_lbl, btn_text):
+        """Worker-thread body shared by Epic, EA and Xbox detection."""
+        added, error = 0, None
         try:
-            from core.xbox_reader import detect_xbox_games
-            games = detect_xbox_games()
-        except Exception as e:
-            self.after(0, lambda: self._on_platform_done(
-                self._xbox_btn, self._xbox_status, 0,
-                f"Error: {e}", "Detectar juegos de Xbox"))
-            return
-        added = self._bulk_add(games)
-        self.after(0, lambda: self._on_platform_done(
-            self._xbox_btn, self._xbox_status, added, None,
-            "Detectar juegos de Xbox"))
+            added = self._bulk_add(detect())
+        except Exception as exc:
+            error = f"Error: {exc}"  # bind now: `exc` is cleared after the except block
+        post(self._on_platform_done, btn, status_lbl, added, error, btn_text)
 
     # ── Shared callback ───────────────────────────────────────────────────────
 
     def _on_platform_done(self, btn, status_lbl, added, error, btn_text):
-        btn.configure(state="normal", text=btn_text)
-        if error:
-            self._set_status(status_lbl, error, ok=False)
-        else:
-            msg = (f"{added} juego(s) nuevos importados"
-                   if added else "Sin juegos nuevos (ya estaban en la biblioteca)")
-            self._set_status(status_lbl, msg, ok=True)
+        if self.winfo_exists():  # the dialog may have been closed during the import
+            btn.configure(state="normal", text=btn_text)
+            if error:
+                self._set_status(status_lbl, error, ok=False)
+            else:
+                msg = t("games_imported", n=added) if added else t("no_new_games")
+                self._set_status(status_lbl, msg, ok=True)
         if self._on_sync_done and not error:
             self._on_sync_done(added, btn_text)
 
@@ -377,10 +350,4 @@ class AccountsDialog(ctk.CTkToplevel):
     def _bulk_add(self, games) -> int:
         if not self._gm:
             return 0
-        added = 0
-        for g in games:
-            before = len(self._gm.games)
-            self._gm.add_game(g)
-            if len(self._gm.games) > before:
-                added += 1
-        return added
+        return self._gm.add_games(games)

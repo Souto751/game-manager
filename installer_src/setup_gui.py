@@ -21,11 +21,16 @@ from pathlib import Path
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
 APP_NAME = "Game Manager"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"  # make_installer.py overwrites this with version.py
 APP_PUBLISHER = "Souto751"
 APP_EXE = "GameManager.exe"
 APP_URL = "https://github.com/Souto751/game-manager"
-DEFAULT_INSTALL_DIR = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / APP_NAME
+# Per-user install: no administrator rights needed, and the app can update itself.
+DEFAULT_INSTALL_DIR = (Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+                       / "Programs" / APP_NAME)
+_REG_UNINSTALL = (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+                  "\\" + APP_PUBLISHER + APP_NAME.replace(" ", ""))
+_REG_OWN = "SOFTWARE\\" + APP_PUBLISHER + "\\" + APP_NAME.replace(" ", "")
 
 # ── Locate bundled zip (PyInstaller _MEIPASS) ─────────────────────────────────
 def _bundle_dir() -> Path:
@@ -144,17 +149,20 @@ class InstallerApp(tk.Tk):
         path = filedialog.askdirectory(title="Seleccionar carpeta de instalación",
                                        initialdir=self._install_dir.get())
         if path:
-            self._install_dir.set(path)
+            chosen = Path(path)
+            # Always install into our own subfolder, never straight into the chosen one.
+            if chosen.name.lower() != APP_NAME.lower():
+                chosen = chosen / APP_NAME
+            self._install_dir.set(str(chosen))
 
     def _check_existing_install(self):
+        """Reuse the folder of a previous per-user install (upgrade in place)."""
         try:
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                                 f"SOFTWARE\\{APP_PUBLISHER}\\{APP_NAME.replace(' ', '')}")
-            existing = winreg.QueryValueEx(key, "InstallDir")[0]
-            winreg.CloseKey(key)
-            if existing and Path(existing).exists():
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_OWN) as key:
+                existing = winreg.QueryValueEx(key, "InstallDir")[0]
+            if existing and (Path(existing) / APP_EXE).exists():
                 self._install_dir.set(existing)
-        except Exception:
+        except OSError:
             pass
 
     # ── Install ───────────────────────────────────────────────────────────────
@@ -170,14 +178,18 @@ class InstallerApp(tk.Tk):
 
     def _do_install(self):
         try:
-            dest = Path(self._install_dir.get())
+            dest = Path(self._install_dir.get()).expanduser()
             self._set_status("Preparando...")
             self._set_progress(5)
 
-            # Remove old installation if present
-            if dest.exists():
+            _check_destination(dest)
+
+            # Upgrade: replace only a previous Game Manager install. User data
+            # (library, accounts, covers) lives in %APPDATA% and is never touched.
+            if dest.exists() and (dest / APP_EXE).exists():
                 self._set_status("Eliminando version anterior...")
-                shutil.rmtree(dest, ignore_errors=True)
+                _ensure_not_running(dest / APP_EXE)
+                shutil.rmtree(dest)
             dest.mkdir(parents=True, exist_ok=True)
             self._set_progress(10)
 
@@ -221,7 +233,8 @@ class InstallerApp(tk.Tk):
 
         except Exception as exc:
             self._state = "error"
-            self.after(0, lambda: self._show_error(str(exc)))
+            message = str(exc)  # bind now: `exc` is cleared after the except block
+            self.after(0, lambda: self._show_error(message))
 
     def _set_status(self, msg: str):
         self.after(0, lambda: self._status_lbl.configure(text=msg))
@@ -274,34 +287,68 @@ def _create_shortcut_ps(target: str, lnk_path: str, description: str, working_di
     )
 
 
-def _register_uninstall(install_dir: Path, exe_path: Path):
-    """Add entry to Windows Add/Remove Programs."""
-    key_path = (f"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
-                f"{APP_PUBLISHER}{APP_NAME.replace(' ', '')}")
-    uninstall_cmd = (
-        f'powershell -Command "Remove-Item -Recurse -Force \'{install_dir}\'; '
-        f'Remove-Item -Force \'{_startmenu_path()}\' -ErrorAction SilentlyContinue; '
-        f'Remove-Item -Force \'{_desktop_path()}\' -ErrorAction SilentlyContinue; '
-        f'Remove-ItemProperty -Path HKLM:\\\\{key_path.replace(chr(92), chr(92)*2)} -Name * -ErrorAction SilentlyContinue"'
-    )
+def _check_destination(dest: Path) -> None:
+    """Refuse folders that hold other things: the upgrade step deletes the folder."""
+    if not dest.exists():
+        return
+    if not dest.is_dir():
+        raise RuntimeError(f"La ruta elegida es un archivo:\n{dest}")
+    if (dest / APP_EXE).exists():
+        return  # Previous Game Manager install: safe to replace.
+    if any(dest.iterdir()):
+        raise RuntimeError(
+            "La carpeta elegida no esta vacia y no contiene una instalacion de "
+            f"{APP_NAME}.\n\nElegi una carpeta vacia o una instalacion anterior.\n{dest}")
+
+
+def _ensure_not_running(exe: Path) -> None:
+    """A running exe is locked on Windows; renaming it is a cheap way to detect that."""
+    probe = exe.with_suffix(".exe.check")
     try:
-        key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, key_path)
-        winreg.SetValueEx(key, "DisplayName",        0, winreg.REG_SZ, APP_NAME)
-        winreg.SetValueEx(key, "DisplayVersion",     0, winreg.REG_SZ, APP_VERSION)
-        winreg.SetValueEx(key, "Publisher",          0, winreg.REG_SZ, APP_PUBLISHER)
-        winreg.SetValueEx(key, "InstallLocation",    0, winreg.REG_SZ, str(install_dir))
-        winreg.SetValueEx(key, "UninstallString",    0, winreg.REG_SZ, uninstall_cmd)
-        winreg.SetValueEx(key, "URLInfoAbout",       0, winreg.REG_SZ, APP_URL)
-        winreg.SetValueEx(key, "NoModify",           0, winreg.REG_DWORD, 1)
-        winreg.SetValueEx(key, "NoRepair",           0, winreg.REG_DWORD, 1)
-        winreg.CloseKey(key)
-        # Also store install dir under our own key for upgrade detection
-        own_key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE,
-                                   f"SOFTWARE\\{APP_PUBLISHER}\\{APP_NAME.replace(' ', '')}")
-        winreg.SetValueEx(own_key, "InstallDir", 0, winreg.REG_SZ, str(install_dir))
-        winreg.CloseKey(own_key)
+        exe.rename(probe)
+        probe.rename(exe)
     except PermissionError:
-        pass  # Non-admin install — skip registry
+        raise RuntimeError(
+            f"{APP_NAME} esta abierto.\n\nCerralo (tambien desde el icono de la bandeja, "
+            "boton derecho > Salir) y volve a intentar.") from None
+
+
+def _ps_quote(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _register_uninstall(install_dir: Path, exe_path: Path):
+    """Add a per-user entry to Windows "Installed apps" (no admin rights needed).
+
+    Uninstalling removes the program, its shortcuts, the autostart entry and
+    these registry keys. User data in %APPDATA%\\GameManager is kept.
+    """
+    script = "; ".join([
+        f"Remove-Item -Recurse -Force -LiteralPath '{_ps_quote(str(install_dir))}' -ErrorAction SilentlyContinue",
+        f"Remove-Item -Force -LiteralPath '{_ps_quote(_startmenu_path())}' -ErrorAction SilentlyContinue",
+        f"Remove-Item -Force -LiteralPath '{_ps_quote(_desktop_path())}' -ErrorAction SilentlyContinue",
+        "Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' "
+        "-Name 'GameManager' -ErrorAction SilentlyContinue",
+        f"Remove-Item -Recurse -Path 'HKCU:\\{_REG_OWN}' -ErrorAction SilentlyContinue",
+        f"Remove-Item -Recurse -Path 'HKCU:\\{_REG_UNINSTALL}' -ErrorAction SilentlyContinue",
+    ])
+    uninstall_cmd = f'powershell -NoProfile -ExecutionPolicy Bypass -Command "{script}"'
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _REG_UNINSTALL) as key:
+            winreg.SetValueEx(key, "DisplayName",     0, winreg.REG_SZ, APP_NAME)
+            winreg.SetValueEx(key, "DisplayVersion",  0, winreg.REG_SZ, APP_VERSION)
+            winreg.SetValueEx(key, "Publisher",       0, winreg.REG_SZ, APP_PUBLISHER)
+            winreg.SetValueEx(key, "DisplayIcon",     0, winreg.REG_SZ, str(exe_path))
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(install_dir))
+            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall_cmd)
+            winreg.SetValueEx(key, "URLInfoAbout",    0, winreg.REG_SZ, APP_URL)
+            winreg.SetValueEx(key, "NoModify",        0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(key, "NoRepair",        0, winreg.REG_DWORD, 1)
+        # Remember the folder for in-place upgrades.
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _REG_OWN) as own_key:
+            winreg.SetValueEx(own_key, "InstallDir", 0, winreg.REG_SZ, str(install_dir))
+    except OSError:
+        pass  # The app works without the uninstall entry.
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

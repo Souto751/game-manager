@@ -1,6 +1,5 @@
 """Folder scanner - finds game executables in user-selected directories."""
 
-import os
 import uuid
 from pathlib import Path
 
@@ -42,14 +41,22 @@ def scan_folder(folder_path: str, depth: int = 2) -> list[Game]:
     Each top-level subfolder is treated as one potential game.
     """
     root = Path(folder_path)
-    if not root.exists():
+    if not root.is_dir():
         return []
 
     games = []
 
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return []
+
     # Each immediate child directory = one potential game
-    for game_dir in root.iterdir():
-        if not game_dir.is_dir():
+    for game_dir in children:
+        try:
+            if not game_dir.is_dir():
+                continue
+        except OSError:
             continue
 
         exes = _find_executables(game_dir, current_depth=0, max_depth=depth)
@@ -57,8 +64,7 @@ def scan_folder(folder_path: str, depth: int = 2) -> list[Game]:
             continue
 
         # Best candidate: largest exe that passes filter
-        exes.sort(key=lambda x: x.stat().st_size, reverse=True)
-        best_exe = exes[0]
+        best_exe = max(exes, key=_size_or_zero)
 
         games.append(Game(
             id=str(uuid.uuid4()),
@@ -77,13 +83,23 @@ def _find_executables(directory: Path, current_depth: int, max_depth: int) -> li
     results = []
     try:
         for item in directory.iterdir():
-            if item.is_file() and item.suffix.lower() == ".exe" and is_likely_game_exe(item):
-                results.append(item)
-            elif item.is_dir() and current_depth < max_depth:
-                results.extend(_find_executables(item, current_depth + 1, max_depth))
-    except PermissionError:
+            try:
+                if item.is_file() and item.suffix.lower() == ".exe" and is_likely_game_exe(item):
+                    results.append(item)
+                elif item.is_dir() and current_depth < max_depth:
+                    results.extend(_find_executables(item, current_depth + 1, max_depth))
+            except OSError:
+                continue
+    except OSError:  # PermissionError, broken links, disconnected drives...
         pass
     return results
+
+
+def _size_or_zero(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
 
 
 def _find_cover_image(directory: Path) -> str | None:
@@ -98,9 +114,12 @@ def _find_cover_image(directory: Path) -> str | None:
                 return str(candidate)
 
     # Fallback: first image file found
-    for item in directory.iterdir():
-        if item.is_file() and item.suffix.lower() in image_exts:
-            return str(item)
+    try:
+        for item in directory.iterdir():
+            if item.is_file() and item.suffix.lower() in image_exts:
+                return str(item)
+    except OSError:
+        pass
 
     return None
 
@@ -109,5 +128,6 @@ def _pretty_name(folder_name: str) -> str:
     """Convert folder name to a readable game name."""
     # Replace separators with spaces
     name = folder_name.replace("_", " ").replace("-", " ").replace(".", " ")
-    # Title case
-    return name.strip().title()
+    name = " ".join(name.split())
+    # Only title-case all-lowercase names: keep "GTA V", "DOOM", "SpaceEngine" as written.
+    return name.title() if name.islower() else name
